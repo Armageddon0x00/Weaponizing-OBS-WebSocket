@@ -164,6 +164,9 @@
         await obs.call("RemoveInput", { inputName: inputName });
         await obs.call("RemoveScene", {sceneName: sceneName})
         console.log('Done...');
+
+        await obs.disconnect();
+        console.log('Disconnected');
     })();
 
 
