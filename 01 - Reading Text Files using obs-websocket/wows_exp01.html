@@ -130,9 +130,12 @@
         });
 
         // 3. imageData = "data:image/png;base64,iVBOR..."
-        console.log("Valid base64 returned...."); // Need to check the returned type here.
-        console.log("Length of base64 (bigger better kinda):", imageData.length);
-
+        if (typeof imageData === "string" && imageData.startsWith("data:image/png;base64,")) {
+            console.log("Valid base64 returned....");
+            console.log("Length of base64 (bigger better kinda):", imageData.length);
+        } else {
+            console.log("Returned data is not valid base64.");
+        }
         const img = document.createElement("img");
 
         img.style.maxWidth = "800px";
