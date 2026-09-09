@@ -1,0 +1,6 @@
+*.py
+*.log
+*.json
+*.png
+*.jpg
+testing/*
